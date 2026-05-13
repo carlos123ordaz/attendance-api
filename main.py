@@ -535,6 +535,15 @@ async def marcar_asistencia(
                 'remoteDays': schedule_config.get('remoteDays', [])
             }
 
+        sede_snapshot = None
+        if sede:
+            sede_snapshot = {
+                'nombre': sede.get('nombre'),
+                'latitude': sede.get('latitude'),
+                'longitude': sede.get('longitude'),
+                'radio': sede.get('radio'),
+            }
+
         start, end = get_range_date()
         asistencia = asistencias_collection.find_one({
             "user": ObjectId(userId),
@@ -569,6 +578,7 @@ async def marcar_asistencia(
                 "entrada": ahora_utc,
                 "user": ObjectId(userId),
                 "sede": ObjectId(user["sede"]) if user.get("sede") else None,
+                "sedeSnapshot": sede_snapshot,
                 "latitude_entrada": latitude,
                 "longitude_entrada": longitude,
                 "valido_entrada": validacion["valido"],
@@ -672,11 +682,13 @@ async def marcar_asistencia(
                 "updatedAt": salida_utc
             }
 
-            # ✅ Si no existía snapshot en la entrada, agregarlo ahora
+            # Si no existía snapshot en la entrada, agregarlo ahora
             if not stored_expected_schedule and expected_schedule:
                 update_data["expectedSchedule"] = expected_schedule
             if not stored_config_snapshot and schedule_config_snapshot:
                 update_data["scheduleConfigSnapshot"] = schedule_config_snapshot
+            if not asistencia.get("sedeSnapshot") and sede_snapshot:
+                update_data["sedeSnapshot"] = sede_snapshot
 
             asistencias_collection.update_one(
                 {"_id": asistencia["_id"]},
