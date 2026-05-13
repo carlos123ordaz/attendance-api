@@ -13,3 +13,4 @@ pydantic
 pydantic-settings
 google-cloud-storage
 pytz
+httpx

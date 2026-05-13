@@ -5,6 +5,7 @@ from datetime import datetime, time, timezone
 import pytz  # ✅ Agregar esta dependencia: pip install pytz
 import numpy as np
 import cv2
+import httpx
 from insightface.app import FaceAnalysis
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form
@@ -372,6 +373,64 @@ async def update_user_photo(
             status_code=500,
             detail=f"Error al procesar la foto: {str(e)}"
         )
+
+
+@app.post("/api/users/bulk-generate-embeddings")
+async def bulk_generate_embeddings():
+    """Genera embeddings masivamente para usuarios que tienen foto pero no tienen embedding."""
+    users = list(users_collection.find(
+        {
+            "photo": {"$exists": True, "$nin": [None, ""]},
+            "$or": [
+                {"embedding": {"$exists": False}},
+                {"embedding": None},
+                {"embedding": []},
+            ],
+        },
+        {"_id": 1, "photo": 1, "name": 1, "lname": 1},
+    ))
+
+    success_count = 0
+    failure_count = 0
+    results = []
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        for user in users:
+            user_id = str(user["_id"])
+            photo_url = user.get("photo", "")
+            name = f"{user.get('name', '')} {user.get('lname', '')}".strip()
+
+            try:
+                response = await client.get(photo_url)
+                response.raise_for_status()
+
+                img = image_to_numpy(response.content)
+                embedding = get_face_embedding(img)
+
+                users_collection.update_one(
+                    {"_id": ObjectId(user_id)},
+                    {"$set": {"embedding": embedding.tolist(), "updatedAt": datetime.utcnow()}},
+                )
+
+                results.append({"user_id": user_id, "name": name, "status": "success"})
+                success_count += 1
+                print(f"[bulk-embeddings] OK: {name} ({user_id})")
+
+            except HTTPException as he:
+                results.append({"user_id": user_id, "name": name, "status": "error", "detail": he.detail})
+                failure_count += 1
+                print(f"[bulk-embeddings] ERROR: {name} ({user_id}) → {he.detail}")
+            except Exception as e:
+                results.append({"user_id": user_id, "name": name, "status": "error", "detail": str(e)})
+                failure_count += 1
+                print(f"[bulk-embeddings] ERROR: {name} ({user_id}) → {str(e)}")
+
+    return {
+        "total": len(users),
+        "success": success_count,
+        "failed": failure_count,
+        "results": results,
+    }
 
 
 @app.post("/api/attendance/marcar")
