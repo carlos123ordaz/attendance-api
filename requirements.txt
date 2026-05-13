@@ -3,7 +3,7 @@ uvicorn
 python-multipart
 insightface
 onnxruntime
-opencv-python
+opencv-python-headless
 numpy
 Pillow
 pymongo
@@ -12,5 +12,4 @@ python-dotenv
 pydantic
 pydantic-settings
 google-cloud-storage
-python-multipart
 pytz
